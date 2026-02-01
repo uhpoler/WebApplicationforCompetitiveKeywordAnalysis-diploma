@@ -1,0 +1,153 @@
+---
+alwaysApply: true
+---
+
+# Competitive Keyword Analysis - Project Standards
+
+## Repo layout
+
+```
+├── apps/
+│   ├── api/          # FastAPI backend (Python)
+│   └── web/          # React + Vite frontend
+└── infra/            # Infrastructure configs
+```
+
+### Key files
+
+- [apps/api/](mdc:apps/api): FastAPI backend
+- [apps/web/](mdc:apps/web): React frontend
+- [infra/](mdc:infra): Infrastructure configs
+- [.vscode/settings.json](mdc:.vscode/settings.json): VS Code/Cursor Python interpreter settings
+- [pyrightconfig.json](mdc:pyrightconfig.json): Pylance language server config
+
+---
+
+# General rules
+
+- Do not hallucinate. If you're unsure whether a script/config/package exists, check the repo.
+- Every time I correct you or find you hallucinating/being wrong, append a short note to this file.
+- If any new rule is discovered in chat mode, add it to this file.
+
+## How to check installed libraries
+
+- Frontend packages: [apps/web/package.json](mdc:apps/web/package.json)
+- Frontend locked versions: [apps/web/package-lock.json](mdc:apps/web/package-lock.json)
+- Backend dependencies: [apps/api/requirements.txt](mdc:apps/api/requirements.txt)
+
+## How to run
+
+- This repo has **no root `package.json`** → do **not** suggest `npm start` from repo root.
+
+### Backend (FastAPI)
+
+Run from [apps/api/](mdc:apps/api):
+
+```bash
+cd apps/api
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+- API: http://localhost:8000
+- Swagger Docs: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Frontend (React + Vite)
+
+Run from [apps/web/](mdc:apps/web):
+
+```bash
+cd apps/web
+npm run dev
+```
+
+- Dev server: http://localhost:5173
+
+### Available frontend scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+
+---
+
+# Backend rules (FastAPI / Python)
+
+## Tech stack
+
+- Python 3.12+
+- [FastAPI](https://fastapi.tiangolo.com/) - REST API framework
+- [Pydantic](https://docs.pydantic.dev/) - Data validation & settings
+- [SQLAlchemy](https://www.sqlalchemy.org/) - ORM
+- [Alembic](https://alembic.sqlalchemy.org/) - Database migrations
+- [Uvicorn](https://www.uvicorn.org/) - ASGI server
+- [psycopg](https://www.psycopg.org/) - PostgreSQL driver
+
+## Project structure
+
+- [apps/api/app/main.py](mdc:apps/api/app/main.py): Application entrypoint
+- [apps/api/app/api/](mdc:apps/api/app/api): API routes
+- [apps/api/app/core/](mdc:apps/api/app/core): Config and settings
+- [apps/api/app/db/](mdc:apps/api/app/db): Database session
+- [apps/api/app/schemas/](mdc:apps/api/app/schemas): Pydantic schemas
+- [apps/api/app/services/](mdc:apps/api/app/services): Business logic
+
+## Virtual environment
+
+- Location: `apps/api/.venv/`
+- Always activate before running: `source apps/api/.venv/bin/activate`
+- Install deps: `pip install -r requirements.txt`
+
+## Configuration
+
+- Settings loaded via [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
+- Config file: [apps/api/app/core/config.py](mdc:apps/api/app/core/config.py)
+- Environment variables can be set in `apps/api/.env`
+
+---
+
+# Frontend rules (React + Vite)
+
+## Tech stack
+
+- React 19
+- Vite 7
+- TypeScript 5.9
+
+## Project structure
+
+- [apps/web/src/](mdc:apps/web/src): Source code
+- [apps/web/src/App.tsx](mdc:apps/web/src/App.tsx): Main App component
+- [apps/web/src/main.tsx](mdc:apps/web/src/main.tsx): Entry point
+
+## Code standards
+
+- ESLint config: [apps/web/eslint.config.js](mdc:apps/web/eslint.config.js)
+- TypeScript config: [apps/web/tsconfig.json](mdc:apps/web/tsconfig.json)
+
+---
+
+# IDE Setup (VS Code / Cursor)
+
+## Python interpreter
+
+The project uses a virtual environment at `apps/api/.venv/`. Configuration files ensure proper resolution:
+
+- `.vscode/settings.json` - Points to `.venv` Python interpreter
+- `pyrightconfig.json` - Tells Pylance where the venv is
+
+**If you see "Import could not be resolved" errors:**
+
+1. `Cmd+Shift+P` → "Python: Select Interpreter"
+2. Choose `./apps/api/.venv/bin/python`
+3. Or run "Developer: Reload Window"
+
+---
+
+# Corrections log
+
+<!-- Add notes here when AI makes mistakes -->
