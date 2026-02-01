@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "./apps/api/.venv/bin/python",
+  "python.analysis.extraPaths": ["./apps/api"],
+  "python.languageServer": "Pylance",
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.stubPath": "./apps/api/.venv/lib/python3.12/site-packages"
+}
