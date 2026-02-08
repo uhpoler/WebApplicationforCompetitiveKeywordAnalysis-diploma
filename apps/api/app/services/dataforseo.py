@@ -146,80 +146,6 @@ class DataForSEOClient:
 
             return results[0].get("items", [])
 
-    async def get_domain_ad_texts(
-        self,
-        domain: str,
-        location_code: int = 2840,
-        platform: str = "google_search",
-        depth: int = 100,
-    ) -> list[str]:
-        """
-        Retrieve text ad content for a specific domain.
-
-        This method filters for text-format ads and extracts readable text
-        from the ad titles and preview URLs.
-
-        Args:
-            domain: The domain to search ads for.
-            location_code: Location code (default: 2840 for United States).
-            platform: Advertising platform (default: "google_search").
-            depth: Number of results to retrieve (default: 100).
-
-        Returns:
-            List of ad text strings.
-        """
-        items = await self.get_domain_ads(
-            domain=domain,
-            location_code=location_code,
-            platform=platform,
-            ad_format="text",
-            depth=depth,
-        )
-
-        ad_texts: list[str] = []
-
-        for item in items:
-            if item.get("type") != "ads_search":
-                continue
-
-            # Only process text format ads
-            if item.get("format") != "text":
-                continue
-
-            # Build a text representation of the ad
-            ad_parts: list[str] = []
-
-            title = item.get("title")
-            if title:
-                ad_parts.append(f"Advertiser: {title}")
-
-            advertiser_id = item.get("advertiser_id")
-            if advertiser_id:
-                ad_parts.append(f"ID: {advertiser_id}")
-
-            creative_id = item.get("creative_id")
-            if creative_id:
-                ad_parts.append(f"Creative: {creative_id}")
-
-            url = item.get("url")
-            if url:
-                ad_parts.append(f"URL: {url}")
-
-            first_shown = item.get("first_shown")
-            last_shown = item.get("last_shown")
-            if first_shown and last_shown:
-                ad_parts.append(f"Active: {first_shown} to {last_shown}")
-
-            verified = item.get("verified")
-            if verified is not None:
-                ad_parts.append(f"Verified: {'Yes' if verified else 'No'}")
-
-            if ad_parts:
-                ad_texts.append(" | ".join(ad_parts))
-
-        return ad_texts
-
-
     async def get_available_locations(self) -> list[dict]:
         """
         Retrieve available locations for Google Ads Search.
@@ -267,16 +193,16 @@ class DataForSEOClient:
                 )
 
             locations = task.get("result", [])
-            
+
             # Filter to only return country-level locations (not states/cities)
             countries = [
                 loc for loc in locations
                 if loc.get("location_type") == "Country"
             ]
-            
+
             # Sort by location name
             countries.sort(key=lambda x: x.get("location_name", ""))
-            
+
             return countries
 
 

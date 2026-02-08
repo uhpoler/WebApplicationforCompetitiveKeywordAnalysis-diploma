@@ -26,7 +26,7 @@ interface AdTextContent {
   error: string | null
 }
 
-interface AdItem {
+interface AdItemWithText {
   type: string
   rank_group: number | null
   rank_absolute: number | null
@@ -39,22 +39,7 @@ interface AdItem {
   preview_image: PreviewImage | null
   first_shown: string | null
   last_shown: string | null
-}
-
-interface AdItemWithText extends AdItem {
   text_content: AdTextContent | null
-}
-
-interface DomainAdsResponse {
-  domain: string
-  ads_count: number
-  ads: string[]
-}
-
-interface DomainAdsDetailedResponse {
-  domain: string
-  ads_count: number
-  ads: AdItem[]
 }
 
 interface DomainAdsWithTextResponse {
@@ -69,11 +54,8 @@ function App() {
   const [maxScrape, setMaxScrape] = useState(5)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [simpleResults, setSimpleResults] = useState<DomainAdsResponse | null>(null)
-  const [detailedResults, setDetailedResults] = useState<DomainAdsDetailedResponse | null>(null)
-  const [textResults, setTextResults] = useState<DomainAdsWithTextResponse | null>(null)
-  const [viewMode, setViewMode] = useState<'simple' | 'detailed' | 'with-text'>('with-text')
-  
+  const [results, setResults] = useState<DomainAdsWithTextResponse | null>(null)
+
   // Location/Country filter
   const [locations, setLocations] = useState<Location[]>([])
   const [selectedLocation, setSelectedLocation] = useState<number>(2840) // Default: United States
@@ -96,7 +78,6 @@ function App() {
     }
     fetchLocations()
   }, [])
-  
 
   const fetchAds = async () => {
     if (!domain.trim()) {
@@ -106,50 +87,32 @@ function App() {
 
     setLoading(true)
     setError(null)
-    setSimpleResults(null)
-    setDetailedResults(null)
-    setTextResults(null)
+    setResults(null)
 
     try {
-      let endpoint: string
-      let queryParams = ''
-
-      if (viewMode === 'simple') {
-        endpoint = '/ads/domain'
-      } else if (viewMode === 'detailed') {
-        endpoint = '/ads/domain/detailed'
-      } else {
-        endpoint = '/ads/domain/with-text'
-        queryParams = `?max_scrape=${maxScrape}`
-      }
-
-      const response = await fetch(`${API_BASE_URL}${endpoint}${queryParams}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          domain: domain.trim(),
-          depth,
-          location_code: selectedLocation,
-          platform: 'google_search',
-        }),
-      })
+      const response = await fetch(
+        `${API_BASE_URL}/ads/domain/with-text?max_scrape=${maxScrape}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            domain: domain.trim(),
+            depth,
+            location_code: selectedLocation,
+            platform: 'google_search',
+          }),
+        }
+      )
 
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.detail || `HTTP error: ${response.status}`)
       }
 
-      const data = await response.json()
-
-      if (viewMode === 'simple') {
-        setSimpleResults(data as DomainAdsResponse)
-      } else if (viewMode === 'detailed') {
-        setDetailedResults(data as DomainAdsDetailedResponse)
-      } else {
-        setTextResults(data as DomainAdsWithTextResponse)
-      }
+      const data: DomainAdsWithTextResponse = await response.json()
+      setResults(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -216,62 +179,19 @@ function App() {
               className="depth-input"
             />
           </div>
-        </div>
 
-        <div className="form-row">
-          <div className="view-mode-toggle">
-            <label>
-              <input
-                type="radio"
-                name="viewMode"
-                value="with-text"
-                checked={viewMode === 'with-text'}
-                onChange={() => setViewMode('with-text')}
-              />
-              With Text (scraped ad content)
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="viewMode"
-                value="detailed"
-                checked={viewMode === 'detailed'}
-                onChange={() => setViewMode('detailed')}
-              />
-              Detailed (metadata + preview)
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="viewMode"
-                value="simple"
-                checked={viewMode === 'simple'}
-                onChange={() => setViewMode('simple')}
-              />
-              Simple (text array)
-            </label>
+          <div className="input-group input-group-small">
+            <label htmlFor="maxScrape">Max OCR</label>
+            <input
+              id="maxScrape"
+              type="number"
+              value={maxScrape}
+              onChange={(e) => setMaxScrape(Number(e.target.value))}
+              min={1}
+              className="depth-input"
+            />
           </div>
         </div>
-
-        {viewMode === 'with-text' && (
-          <div className="form-row">
-            <div className="input-group input-group-small">
-              <label htmlFor="maxScrape">Max to scrape</label>
-              <input
-                id="maxScrape"
-                type="number"
-                value={maxScrape}
-                onChange={(e) => setMaxScrape(Number(e.target.value))}
-                min={1}
-                // max={20}
-                className="depth-input"
-              />
-            </div>
-            <p className="hint-text">
-              Scraping is slow (~5-10s per ad). Limit results for faster response.
-            </p>
-          </div>
-        )}
 
         <button type="submit" disabled={loading} className="search-button">
           {loading ? 'Searching...' : 'Search Ads'}
@@ -284,117 +204,18 @@ function App() {
         </div>
       )}
 
-      {simpleResults && (
+      {results && (
         <div className="results-container">
           <div className="results-header">
-            <h2>Results for: {simpleResults.domain}</h2>
-            <span className="ads-count">{simpleResults.ads_count} ads found</span>
+            <h2>Results for: {results.domain}</h2>
+            <span className="ads-count">{results.ads_count} ads found</span>
           </div>
 
-          {simpleResults.ads.length === 0 ? (
-            <p className="no-results">No ads found for this domain.</p>
-          ) : (
-            <ul className="ads-list">
-              {simpleResults.ads.map((ad, index) => (
-                <li key={index} className="ad-item-simple">
-                  {ad}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {detailedResults && (
-        <div className="results-container">
-          <div className="results-header">
-            <h2>Results for: {detailedResults.domain}</h2>
-            <span className="ads-count">{detailedResults.ads_count} ads found</span>
-          </div>
-
-          {detailedResults.ads.length === 0 ? (
+          {results.ads.length === 0 ? (
             <p className="no-results">No ads found for this domain.</p>
           ) : (
             <div className="ads-grid">
-              {detailedResults.ads.map((ad, index) => (
-                <div key={index} className="ad-card">
-                  <div className="ad-card-header">
-                    <span className="ad-title">{ad.title || 'Unknown Advertiser'}</span>
-                    {ad.verified && <span className="verified-badge">✓ Verified</span>}
-                  </div>
-
-                  {/* Preview Image - Shows actual ad content */}
-                  {ad.preview_image?.url && (
-                    <div className="ad-preview-container">
-                      <img
-                        src={ad.preview_image.url}
-                        alt={`Ad preview for ${ad.title || 'advertiser'}`}
-                        className="ad-preview-image"
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
-
-                  <div className="ad-card-body">
-                    <div className="ad-field">
-                      <span className="field-label">Format:</span>
-                      <span className="field-value">{ad.format || 'N/A'}</span>
-                    </div>
-
-                    <div className="ad-field">
-                      <span className="field-label">Advertiser ID:</span>
-                      <span className="field-value mono">{ad.advertiser_id || 'N/A'}</span>
-                    </div>
-
-                    <div className="ad-field">
-                      <span className="field-label">Creative ID:</span>
-                      <span className="field-value mono">{ad.creative_id || 'N/A'}</span>
-                    </div>
-
-                    {ad.first_shown && (
-                      <div className="ad-field">
-                        <span className="field-label">First Shown:</span>
-                        <span className="field-value">{ad.first_shown}</span>
-                      </div>
-                    )}
-
-                    {ad.last_shown && (
-                      <div className="ad-field">
-                        <span className="field-label">Last Shown:</span>
-                        <span className="field-value">{ad.last_shown}</span>
-                      </div>
-                    )}
-
-                    {ad.url && (
-                      <a
-                        href={ad.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ad-link"
-                      >
-                        View in Ads Transparency Center →
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {textResults && (
-        <div className="results-container">
-          <div className="results-header">
-            <h2>Results for: {textResults.domain}</h2>
-            <span className="ads-count">{textResults.ads_count} ads found</span>
-          </div>
-
-          {textResults.ads.length === 0 ? (
-            <p className="no-results">No ads found for this domain.</p>
-          ) : (
-            <div className="ads-grid">
-              {textResults.ads.map((ad, index) => (
+              {results.ads.map((ad, index) => (
                 <div key={index} className="ad-card ad-card-with-text">
                   <div className="ad-card-header">
                     <span className="ad-title">{ad.title || 'Unknown Advertiser'}</span>

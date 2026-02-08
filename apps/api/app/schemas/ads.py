@@ -54,45 +54,12 @@ class DomainAdsRequest(BaseModel):
         return v.lower()
 
 
-class DomainAdsResponse(BaseModel):
-    """Response schema for domain ads endpoint."""
-
-    domain: str = Field(description="The normalized domain that was searched")
-    ads_count: int = Field(description="Number of ads found")
-    ads: list[str] = Field(description="List of ad text strings")
-
-
 class PreviewImage(BaseModel):
     """Schema for ad preview image."""
 
     url: str | None = Field(default=None, description="URL to the preview image")
     width: int | None = Field(default=None, description="Image width in pixels")
     height: int | None = Field(default=None, description="Image height in pixels")
-
-
-class AdItem(BaseModel):
-    """Schema for a single ad item with full details."""
-
-    type: str = Field(description="Type of the item (ads_search)")
-    rank_group: int | None = Field(default=None, description="Rank within the group")
-    rank_absolute: int | None = Field(default=None, description="Absolute rank in SERP")
-    advertiser_id: str | None = Field(default=None, description="Advertiser ID")
-    creative_id: str | None = Field(default=None, description="Creative/ad ID")
-    title: str | None = Field(default=None, description="Advertiser name/title")
-    url: str | None = Field(default=None, description="URL to the ad in transparency center")
-    verified: bool | None = Field(default=None, description="Whether advertiser is verified")
-    format: str | None = Field(default=None, description="Ad format (text, image, video)")
-    preview_image: PreviewImage | None = Field(default=None, description="Preview image of the ad creative")
-    first_shown: str | None = Field(default=None, description="When ad was first shown")
-    last_shown: str | None = Field(default=None, description="When ad was last shown")
-
-
-class DomainAdsDetailedResponse(BaseModel):
-    """Response schema for domain ads with full item details."""
-
-    domain: str = Field(description="The normalized domain that was searched")
-    ads_count: int = Field(description="Number of ads found")
-    ads: list[AdItem] = Field(description="List of ad items with full details")
 
 
 class AdTextContent(BaseModel):
@@ -128,13 +95,6 @@ class DomainAdsWithTextResponse(BaseModel):
     domain: str = Field(description="The normalized domain that was searched")
     ads_count: int = Field(description="Number of ads found")
     ads: list[AdItemWithText] = Field(description="List of ad items with text content")
-
-
-class ErrorResponse(BaseModel):
-    """Schema for error responses."""
-
-    detail: str = Field(description="Error message")
-    status_code: int | None = Field(default=None, description="DataForSEO API status code if applicable")
 
 
 class Location(BaseModel):
