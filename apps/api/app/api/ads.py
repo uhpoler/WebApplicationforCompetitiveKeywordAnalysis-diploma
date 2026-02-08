@@ -285,7 +285,7 @@ async def get_domain_ads_with_text(
     scraper: Annotated[AdTextScraper, Depends(get_ad_scraper)],
     max_scrape: Annotated[
         int,
-        Query(description="Max ads to scrape text from (default: 5)", ge=1, le=20),
+        Query(description="Max ads to scrape text from (default: 5)", ge=1),
     ] = 5,
 ) -> DomainAdsWithTextResponse:
     """
@@ -346,8 +346,8 @@ async def get_domain_ads_with_text(
                 text_content = AdTextContent(
                     headline=text_content_data.get("headline"),
                     description=text_content_data.get("description"),
-                    display_url=text_content_data.get("display_url"),
-                    sitelinks=text_content_data.get("sitelinks", []),
+                    # display_url=text_content_data.get("display_url"),
+                    # sitelinks=text_content_data.get("sitelinks", []),
                     raw_text=text_content_data.get("raw_text"),
                     error=text_content_data.get("error"),
                 )

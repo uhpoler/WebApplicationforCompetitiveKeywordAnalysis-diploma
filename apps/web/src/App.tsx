@@ -263,7 +263,7 @@ function App() {
                 value={maxScrape}
                 onChange={(e) => setMaxScrape(Number(e.target.value))}
                 min={1}
-                max={20}
+                // max={20}
                 className="depth-input"
               />
             </div>
