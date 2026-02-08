@@ -1,0 +1,1 @@
+export { AdResults } from './AdResults'
