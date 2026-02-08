@@ -68,6 +68,7 @@ class AdTextContent(BaseModel):
     headline: str | None = Field(default=None, description="Ad headline (blue text)")
     description: str | None = Field(default=None, description="Ad description (gray text)")
     raw_text: str | None = Field(default=None, description="Raw extracted text from the ad")
+    keyphrases: list[str] = Field(default_factory=list, description="Extracted key phrases (1-5 phrases)")
     error: str | None = Field(default=None, description="Error message if extraction failed")
 
 

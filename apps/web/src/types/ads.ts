@@ -22,6 +22,7 @@ export interface AdTextContent {
   headline: string | null
   description: string | null
   raw_text: string | null
+  keyphrases: string[]
   error: string | null
 }
 

@@ -19,6 +19,7 @@ from app.services.dataforseo import (
     DataForSEOError,
     get_dataforseo_client,
 )
+from app.services.keyword_extractor import KeywordExtractor, get_keyword_extractor
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -84,6 +85,7 @@ async def get_domain_ads_with_text(
     request: DomainAdsRequest,
     client: Annotated[DataForSEOClient, Depends(get_dataforseo_client)],
     scraper: Annotated[AdTextScraper, Depends(get_ad_scraper)],
+    keyword_extractor: Annotated[KeywordExtractor, Depends(get_keyword_extractor)],
     max_scrape: Annotated[
         int,
         Query(description="Max ads to extract text from (default: 5)", ge=1),
@@ -142,14 +144,26 @@ async def get_domain_ads_with_text(
                     height=preview_image_data.get("height"),
                 )
 
-            # Parse text_content
+            # Parse text_content and extract keyphrases
             text_content_data = item.get("text_content")
             text_content = None
             if text_content_data and isinstance(text_content_data, dict):
+                headline = text_content_data.get("headline")
+                description = text_content_data.get("description")
+                raw_text = text_content_data.get("raw_text")
+
+                # Extract keyphrases from the ad text
+                keyphrases = keyword_extractor.extract_from_ad_text(
+                    headline=headline,
+                    description=description,
+                    raw_text=raw_text,
+                )
+
                 text_content = AdTextContent(
-                    headline=text_content_data.get("headline"),
-                    description=text_content_data.get("description"),
-                    raw_text=text_content_data.get("raw_text"),
+                    headline=headline,
+                    description=description,
+                    raw_text=raw_text,
+                    keyphrases=keyphrases,
                     error=text_content_data.get("error"),
                 )
 

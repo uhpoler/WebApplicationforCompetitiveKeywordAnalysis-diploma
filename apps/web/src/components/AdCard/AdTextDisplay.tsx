@@ -27,6 +27,7 @@ export function AdTextDisplay({ textContent }: AdTextDisplayProps) {
   const hasStructuredContent = textContent.headline || textContent.description
   const hasRawText = textContent.raw_text
   const hasNoContent = !hasStructuredContent && !hasRawText
+  const hasKeyphrases = textContent.keyphrases && textContent.keyphrases.length > 0
 
   return (
     <div className="ad-text-content">
@@ -47,6 +48,19 @@ export function AdTextDisplay({ textContent }: AdTextDisplayProps) {
 
       {hasNoContent && (
         <div className="text-empty">No text content extracted</div>
+      )}
+
+      {hasKeyphrases && (
+        <div className="keyphrases-container">
+          <span className="keyphrases-label">Key phrases:</span>
+          <div className="keyphrases-list">
+            {textContent.keyphrases.map((phrase, index) => (
+              <span key={index} className="keyphrase-tag">
+                {phrase}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

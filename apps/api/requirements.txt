@@ -28,3 +28,4 @@ httpx==0.28.1
 pytesseract==0.3.13
 Pillow==11.2.1
 numpy==2.2.3
+yake==0.4.8
