@@ -1,5 +1,7 @@
 import type { AdsSearchResponse } from '../../types/ads'
 import { AdCard } from '../AdCard'
+import { Tabs } from '../Tabs'
+import { ClusterView } from '../ClusterView'
 import './AdResults.css'
 
 interface AdResultsProps {
@@ -7,13 +9,8 @@ interface AdResultsProps {
 }
 
 export function AdResults({ results }: AdResultsProps) {
-  return (
-    <section className="results-container">
-      <header className="results-header">
-        <h2>Results for: {results.domain}</h2>
-        <span className="ads-count">{results.ads_count} ads found</span>
-      </header>
-
+  const cardsContent = (
+    <>
       {results.ads.length === 0 ? (
         <p className="no-results">No ads found for this domain.</p>
       ) : (
@@ -23,6 +20,35 @@ export function AdResults({ results }: AdResultsProps) {
           ))}
         </div>
       )}
+    </>
+  )
+
+  const clustersContent = results.clustering ? (
+    <ClusterView clustering={results.clustering} />
+  ) : (
+    <p className="no-results">Clustering data not available.</p>
+  )
+
+  const tabs = [
+    {
+      id: 'cards',
+      label: `Ad Cards (${results.ads_count})`,
+      content: cardsContent,
+    },
+    {
+      id: 'clusters',
+      label: `Clusters (${results.clustering?.clusters.length || 0})`,
+      content: clustersContent,
+    },
+  ]
+
+  return (
+    <section className="results-container">
+      <header className="results-header">
+        <h2>Results for: {results.domain}</h2>
+      </header>
+
+      <Tabs tabs={tabs} defaultTab="cards" />
     </section>
   )
 }

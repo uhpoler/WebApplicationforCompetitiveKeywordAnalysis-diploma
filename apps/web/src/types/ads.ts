@@ -43,11 +43,36 @@ export interface AdItem {
   text_content: AdTextContent | null
 }
 
+/** Information about a keyphrase and its source ad */
+export interface PhraseInfo {
+  phrase: string
+  ad_title: string | null
+  ad_url: string | null
+  creative_id: string | null
+}
+
+/** A cluster of related keyphrases */
+export interface Cluster {
+  id: number
+  name: string
+  size: number
+  phrases: PhraseInfo[]
+}
+
+/** Clustering result data */
+export interface ClusteringData {
+  clusters: Cluster[]
+  unclustered: PhraseInfo[]
+  total_phrases: number
+  error: string | null
+}
+
 /** Response from the domain ads search endpoint */
 export interface AdsSearchResponse {
   domain: string
   ads_count: number
   ads: AdItem[]
+  clustering: ClusteringData | null
 }
 
 /** Parameters for searching ads */

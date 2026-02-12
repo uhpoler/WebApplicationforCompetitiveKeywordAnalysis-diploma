@@ -90,12 +90,40 @@ class AdItemWithText(BaseModel):
     text_content: AdTextContent | None = Field(default=None, description="Scraped text content from the ad")
 
 
+class PhraseInfo(BaseModel):
+    """Information about a keyphrase and its source ad."""
+
+    phrase: str = Field(description="The keyphrase text")
+    ad_title: str | None = Field(default=None, description="Title of the ad containing this phrase")
+    ad_url: str | None = Field(default=None, description="URL to view the ad in Transparency Center")
+    creative_id: str | None = Field(default=None, description="Creative ID of the source ad")
+
+
+class Cluster(BaseModel):
+    """A cluster of related keyphrases."""
+
+    id: int = Field(description="Cluster ID")
+    name: str = Field(description="Generated cluster name based on common terms")
+    size: int = Field(description="Number of phrases in this cluster")
+    phrases: list[PhraseInfo] = Field(description="Phrases in this cluster with ad metadata")
+
+
+class ClusteringData(BaseModel):
+    """Clustering result data."""
+
+    clusters: list[Cluster] = Field(description="List of phrase clusters sorted by size")
+    unclustered: list[PhraseInfo] = Field(description="Phrases that couldn't be clustered")
+    total_phrases: int = Field(description="Total number of phrases processed")
+    error: str | None = Field(default=None, description="Error message if clustering failed")
+
+
 class DomainAdsWithTextResponse(BaseModel):
     """Response schema for domain ads with scraped text content."""
 
     domain: str = Field(description="The normalized domain that was searched")
     ads_count: int = Field(description="Number of ads found")
     ads: list[AdItemWithText] = Field(description="List of ad items with text content")
+    clustering: ClusteringData | None = Field(default=None, description="Clustering results for keyphrases")
 
 
 class Location(BaseModel):

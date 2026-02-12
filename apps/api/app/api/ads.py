@@ -7,10 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.schemas.ads import (
     AdItemWithText,
     AdTextContent,
+    Cluster,
+    ClusteringData,
     DomainAdsRequest,
     DomainAdsWithTextResponse,
     Location,
     LocationsResponse,
+    PhraseInfo,
     PreviewImage,
 )
 from app.services.ad_scraper import AdTextScraper, get_ad_scraper
@@ -20,6 +23,11 @@ from app.services.dataforseo import (
     get_dataforseo_client,
 )
 from app.services.keyword_extractor import KeywordExtractor, get_keyword_extractor
+from app.services.phrase_clustering import (
+    PhraseClusterer,
+    PhraseInfo as ClusterPhraseInfo,
+    get_phrase_clusterer,
+)
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -73,10 +81,10 @@ async def get_locations(
 @router.post(
     "/domain/with-text",
     response_model=DomainAdsWithTextResponse,
-    summary="Get ads with extracted text content",
-    description="Retrieve Google Ads with text content extracted via OCR from preview images.",
+    summary="Get ads with extracted text content and keyphrase clusters",
+    description="Retrieve Google Ads with text content extracted via OCR, keyphrases, and clustering.",
     responses={
-        200: {"description": "Successfully retrieved ads with text"},
+        200: {"description": "Successfully retrieved ads with text and clusters"},
         400: {"description": "Invalid request parameters"},
         500: {"description": "API or OCR error"},
     },
@@ -86,6 +94,7 @@ async def get_domain_ads_with_text(
     client: Annotated[DataForSEOClient, Depends(get_dataforseo_client)],
     scraper: Annotated[AdTextScraper, Depends(get_ad_scraper)],
     keyword_extractor: Annotated[KeywordExtractor, Depends(get_keyword_extractor)],
+    clusterer: Annotated[PhraseClusterer, Depends(get_phrase_clusterer)],
     max_scrape: Annotated[
         int,
         Query(description="Max ads to extract text from (default: 5)", ge=1),
@@ -98,6 +107,8 @@ async def get_domain_ads_with_text(
     1. Fetches ad metadata from DataForSEO (including preview image URLs)
     2. Downloads the preview images
     3. Extracts headline and description using color-based OCR
+    4. Extracts keyphrases using YAKE
+    5. Clusters keyphrases using sentence embeddings + HDBSCAN
 
     - **domain**: The domain URL to search
     - **location_code**: Geographic location code (default: 2840 for US)
@@ -131,8 +142,10 @@ async def get_domain_ads_with_text(
             max_concurrent=5,
         )
 
-        # Build response
-        ads = []
+        # Build response and collect phrases for clustering
+        ads: list[AdItemWithText] = []
+        all_phrase_infos: list[ClusterPhraseInfo] = []
+
         for item in scraped_items:
             # Parse preview_image
             preview_image_data = item.get("preview_image")
@@ -147,6 +160,8 @@ async def get_domain_ads_with_text(
             # Parse text_content and extract keyphrases
             text_content_data = item.get("text_content")
             text_content = None
+            keyphrases: list[str] = []
+
             if text_content_data and isinstance(text_content_data, dict):
                 headline = text_content_data.get("headline")
                 description = text_content_data.get("description")
@@ -167,15 +182,30 @@ async def get_domain_ads_with_text(
                     error=text_content_data.get("error"),
                 )
 
+            # Collect phrase info for clustering
+            ad_title = item.get("title")
+            ad_url = item.get("url")
+            creative_id = item.get("creative_id")
+
+            for phrase in keyphrases:
+                all_phrase_infos.append(
+                    ClusterPhraseInfo(
+                        phrase=phrase,
+                        ad_title=ad_title,
+                        ad_url=ad_url,
+                        creative_id=creative_id,
+                    )
+                )
+
             ads.append(
                 AdItemWithText(
                     type=item.get("type", "ads_search"),
                     rank_group=item.get("rank_group"),
                     rank_absolute=item.get("rank_absolute"),
                     advertiser_id=item.get("advertiser_id"),
-                    creative_id=item.get("creative_id"),
-                    title=item.get("title"),
-                    url=item.get("url"),
+                    creative_id=creative_id,
+                    title=ad_title,
+                    url=ad_url,
                     verified=item.get("verified"),
                     format=item.get("format"),
                     preview_image=preview_image,
@@ -185,10 +215,50 @@ async def get_domain_ads_with_text(
                 )
             )
 
+        # Cluster the keyphrases
+        clustering_result = clusterer.cluster_phrases(all_phrase_infos)
+
+        # Convert to response schema
+        clusters = [
+            Cluster(
+                id=c.id,
+                name=c.name,
+                size=c.size,
+                phrases=[
+                    PhraseInfo(
+                        phrase=p.phrase,
+                        ad_title=p.ad_title,
+                        ad_url=p.ad_url,
+                        creative_id=p.creative_id,
+                    )
+                    for p in c.phrases
+                ],
+            )
+            for c in clustering_result.clusters
+        ]
+
+        unclustered = [
+            PhraseInfo(
+                phrase=p.phrase,
+                ad_title=p.ad_title,
+                ad_url=p.ad_url,
+                creative_id=p.creative_id,
+            )
+            for p in clustering_result.unclustered
+        ]
+
+        clustering_data = ClusteringData(
+            clusters=clusters,
+            unclustered=unclustered,
+            total_phrases=clustering_result.total_phrases,
+            error=clustering_result.error,
+        )
+
         return DomainAdsWithTextResponse(
             domain=normalized_domain,
             ads_count=len(ads),
             ads=ads,
+            clustering=clustering_data,
         )
 
     except DataForSEOError as e:
