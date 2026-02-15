@@ -75,6 +75,7 @@ class PhraseInfo:
     ad_title: str | None
     ad_url: str | None
     creative_id: str | None
+    domain: str | None = None
 
 
 @dataclass

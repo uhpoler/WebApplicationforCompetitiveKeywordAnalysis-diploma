@@ -242,6 +242,7 @@ async def get_domain_ads_with_text(
                         ad_title=ad_title,
                         ad_url=ad_url,
                         creative_id=creative_id,
+                        domain=normalized_domain,
                     )
                 )
 
@@ -278,6 +279,7 @@ async def get_domain_ads_with_text(
                         ad_title=p.ad_title,
                         ad_url=p.ad_url,
                         creative_id=p.creative_id,
+                        domain=p.domain,
                     )
                     for p in c.phrases
                 ],
@@ -291,6 +293,7 @@ async def get_domain_ads_with_text(
                 ad_title=p.ad_title,
                 ad_url=p.ad_url,
                 creative_id=p.creative_id,
+                domain=p.domain,
             )
             for p in clustering_result.unclustered
         ]

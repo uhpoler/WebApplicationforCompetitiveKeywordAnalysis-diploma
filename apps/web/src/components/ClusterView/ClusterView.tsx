@@ -63,6 +63,9 @@ export function ClusterView({ clustering }: ClusterViewProps) {
             {unclustered.map((phrase, index) => (
               <div key={index} className="unclustered-phrase">
                 <span className="phrase-text">{phrase.phrase}</span>
+                {phrase.domain && (
+                  <span className="phrase-domain-small">{phrase.domain}</span>
+                )}
                 {phrase.ad_url && (
                   <a
                     href={phrase.ad_url}

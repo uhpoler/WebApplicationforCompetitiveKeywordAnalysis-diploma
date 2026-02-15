@@ -44,6 +44,9 @@ export function ClusterCard({ cluster }: ClusterCardProps) {
             >
               {phraseInfo.phrase}
             </span>
+            {phraseInfo.domain && (
+              <span className="phrase-domain">{phraseInfo.domain}</span>
+            )}
             {phraseInfo.ad_url && (
               <a
                 href={phraseInfo.ad_url}

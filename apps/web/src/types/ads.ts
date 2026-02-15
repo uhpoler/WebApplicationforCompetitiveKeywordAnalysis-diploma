@@ -62,6 +62,7 @@ export interface PhraseInfo {
   ad_title: string | null
   ad_url: string | null
   creative_id: string | null
+  domain: string | null
 }
 
 /** A cluster of related keyphrases */

@@ -99,6 +99,7 @@ class PhraseInfo(BaseModel):
     ad_title: str | None = Field(default=None, description="Title of the ad containing this phrase")
     ad_url: str | None = Field(default=None, description="URL to view the ad in Transparency Center")
     creative_id: str | None = Field(default=None, description="Creative ID of the source ad")
+    domain: str | None = Field(default=None, description="Domain that this phrase belongs to")
 
 
 class Cluster(BaseModel):
