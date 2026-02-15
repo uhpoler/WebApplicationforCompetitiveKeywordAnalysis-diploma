@@ -1,5 +1,7 @@
 .tabs-container {
   width: 100%;
+  /* Prevent width changes when switching tabs */
+  min-width: 0;
 }
 
 .tabs-header {
@@ -34,4 +36,9 @@
 
 .tabs-content {
   padding-top: 0.5rem;
+  /* Prevent layout shift when switching tabs */
+  min-height: 200px;
+  /* Use width 100% to prevent content from expanding the container */
+  width: 100%;
+  overflow-x: hidden;
 }

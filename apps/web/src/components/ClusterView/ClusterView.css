@@ -1,5 +1,8 @@
 .cluster-view {
   padding: 0.5rem 0;
+  /* Ensure consistent width with ads grid */
+  width: 100%;
+  min-width: 0;
 }
 
 /* Stats bar */

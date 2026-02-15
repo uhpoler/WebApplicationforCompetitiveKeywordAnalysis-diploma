@@ -1,0 +1,1 @@
+export { DomainTagInput } from './DomainTagInput'

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { Location, Language } from '../../types/ads'
+import { DomainTagInput } from '../DomainTagInput'
 import './SearchForm.css'
 
 interface SearchFormProps {
-  domain: string
+  domains: string[]
   depth: number
   selectedLocation: number
   selectedLanguage: string | null
@@ -12,7 +13,7 @@ interface SearchFormProps {
   locationsLoading: boolean
   languagesLoading: boolean
   isLoading: boolean
-  onDomainChange: (value: string) => void
+  onDomainsChange: (domains: string[]) => void
   onDepthChange: (value: number) => void
   onLocationChange: (value: number) => void
   onLanguageChange: (value: string | null) => void
@@ -20,7 +21,7 @@ interface SearchFormProps {
 }
 
 export function SearchForm({
-  domain,
+  domains,
   depth,
   selectedLocation,
   selectedLanguage,
@@ -29,7 +30,7 @@ export function SearchForm({
   locationsLoading,
   languagesLoading,
   isLoading,
-  onDomainChange,
+  onDomainsChange,
   onDepthChange,
   onLocationChange,
   onLanguageChange,
@@ -75,19 +76,19 @@ export function SearchForm({
 
   return (
     <form onSubmit={handleSubmit} className="search-form">
-      <div className="form-row">
-        <div className="input-group">
-          <label htmlFor="domain">Domain</label>
-          <input
-            id="domain"
-            type="text"
-            value={domain}
-            onChange={(e) => onDomainChange(e.target.value)}
-            placeholder="e.g., theliven.com"
-            className="domain-input"
+      <div className="form-row form-row-domains">
+        <div className="input-group input-group-domains">
+          <label htmlFor="domains">Domains</label>
+          <DomainTagInput
+            domains={domains}
+            onChange={onDomainsChange}
+            placeholder="Type domain and press Enter..."
+            disabled={isLoading}
           />
         </div>
+      </div>
 
+      <div className="form-row">
         <div className="input-group">
           <label htmlFor="country">Country *</label>
           <select
@@ -129,7 +130,7 @@ export function SearchForm({
         </div>
 
         <div className="input-group input-group-small">
-          <label htmlFor="depth">Ads to process</label>
+          <label htmlFor="depth">Ads per domain</label>
           <input
             id="depth"
             type="text"
@@ -144,8 +145,8 @@ export function SearchForm({
         </div>
       </div>
 
-      <button type="submit" disabled={isLoading} className="search-button">
-        {isLoading ? 'Searching...' : 'Search Ads'}
+      <button type="submit" disabled={isLoading || domains.length === 0} className="search-button">
+        {isLoading ? 'Searching...' : `Search Ads${domains.length > 0 ? ` (${domains.length} domain${domains.length > 1 ? 's' : ''})` : ''}`}
       </button>
     </form>
   )

@@ -88,10 +88,26 @@ export interface AdsSearchResponse {
   clustering: ClusteringData | null
 }
 
-/** Parameters for searching ads */
-export interface AdsSearchParams {
+/** Parameters for searching ads (single domain - used internally) */
+export interface SingleDomainSearchParams {
   domain: string
   depth: number
   locationCode: number
   language: string | null
+}
+
+/** Parameters for searching ads (multiple domains) */
+export interface AdsSearchParams {
+  domains: string[]
+  depth: number
+  locationCode: number
+  language: string | null
+}
+
+/** Combined response from multiple domain searches */
+export interface CombinedAdsSearchResponse {
+  domains: string[]
+  ads_count: number
+  ads: AdItem[]
+  clustering: ClusteringData | null
 }

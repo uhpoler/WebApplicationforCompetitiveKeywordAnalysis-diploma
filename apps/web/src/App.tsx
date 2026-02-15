@@ -10,7 +10,7 @@ const DEFAULT_DEPTH = 10
 
 function App() {
   // Form state
-  const [domain, setDomain] = useState('')
+  const [domains, setDomains] = useState<string[]>([])
   const [depth, setDepth] = useState(DEFAULT_DEPTH)
   const [selectedLocation, setSelectedLocation] = useState(DEFAULT_LOCATION)
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
@@ -22,7 +22,7 @@ function App() {
 
   const handleSearch = () => {
     search({
-      domain,
+      domains,
       depth,
       locationCode: selectedLocation,
       language: selectedLanguage,
@@ -37,7 +37,7 @@ function App() {
       </header>
 
       <SearchForm
-        domain={domain}
+        domains={domains}
         depth={depth}
         selectedLocation={selectedLocation}
         selectedLanguage={selectedLanguage}
@@ -46,7 +46,7 @@ function App() {
         locationsLoading={locationsLoading}
         languagesLoading={languagesLoading}
         isLoading={isLoading}
-        onDomainChange={setDomain}
+        onDomainsChange={setDomains}
         onDepthChange={setDepth}
         onLocationChange={setSelectedLocation}
         onLanguageChange={setSelectedLanguage}

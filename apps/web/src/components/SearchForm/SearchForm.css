@@ -14,7 +14,12 @@
 
 .input-group {
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
+}
+
+.input-group-domains {
+  flex: 1;
+  min-width: 100%;
 }
 
 .input-group-small {
