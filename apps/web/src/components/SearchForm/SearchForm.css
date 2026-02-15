@@ -31,7 +31,8 @@
 
 .domain-input,
 .depth-input,
-.country-select {
+.country-select,
+.language-select {
   width: 100%;
   padding: 0.75rem 1rem;
   border: 1px solid #333;
@@ -43,7 +44,8 @@
   box-sizing: border-box;
 }
 
-.country-select {
+.country-select,
+.language-select {
   cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
@@ -52,14 +54,16 @@
   padding-right: 2.5rem;
 }
 
-.country-select:disabled {
+.country-select:disabled,
+.language-select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .domain-input:focus,
 .depth-input:focus,
-.country-select:focus {
+.country-select:focus,
+.language-select:focus {
   outline: none;
   border-color: #667eea;
 }

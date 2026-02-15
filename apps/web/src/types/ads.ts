@@ -10,6 +10,17 @@ export interface LocationsResponse {
   locations: Location[]
 }
 
+/** Language for filtering ads */
+export interface Language {
+  code: string
+  name: string
+}
+
+/** Response from the languages endpoint */
+export interface LanguagesResponse {
+  languages: Language[]
+}
+
 /** Preview image data for an ad */
 export interface PreviewImage {
   url: string | null
@@ -23,6 +34,7 @@ export interface AdTextContent {
   description: string | null
   raw_text: string | null
   keyphrases: string[]
+  detected_language: string | null
   error: string | null
 }
 
@@ -80,5 +92,5 @@ export interface AdsSearchParams {
   domain: string
   depth: number
   locationCode: number
-  maxScrape: number
+  language: string | null
 }

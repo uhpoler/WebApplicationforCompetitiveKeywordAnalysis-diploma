@@ -30,3 +30,4 @@ Pillow==11.2.1
 numpy==2.2.3
 yake==0.4.8
 sentence-transformers==3.3.1
+langdetect==1.0.9

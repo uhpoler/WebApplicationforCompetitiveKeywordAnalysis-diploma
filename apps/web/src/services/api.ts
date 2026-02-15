@@ -1,4 +1,4 @@
-import type { AdsSearchParams, AdsSearchResponse, LocationsResponse } from '../types/ads'
+import type { AdsSearchParams, AdsSearchResponse, LanguagesResponse, LocationsResponse } from '../types/ads'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -27,26 +27,44 @@ export async function fetchLocations(): Promise<LocationsResponse> {
 }
 
 /**
+ * Fetch available languages for filtering ads.
+ */
+export async function fetchLanguages(): Promise<LanguagesResponse> {
+  const response = await fetch(`${API_BASE_URL}/ads/languages`)
+
+  if (!response.ok) {
+    throw new ApiError(`Failed to load languages: ${response.status}`, response.status)
+  }
+
+  return response.json()
+}
+
+/**
  * Search for ads by domain with text extraction.
  */
 export async function searchAds(params: AdsSearchParams): Promise<AdsSearchResponse> {
-  const { domain, depth, locationCode, maxScrape } = params
+  const { domain, depth, locationCode, language } = params
 
-  const response = await fetch(
-    `${API_BASE_URL}/ads/domain/with-text?max_scrape=${maxScrape}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        domain: domain.trim(),
-        depth,
-        location_code: locationCode,
-        platform: 'google_search',
-      }),
-    }
-  )
+  // Build query params
+  const queryParams = new URLSearchParams()
+  if (language) {
+    queryParams.set('language', language)
+  }
+  const queryString = queryParams.toString()
+  const url = `${API_BASE_URL}/ads/domain/with-text${queryString ? `?${queryString}` : ''}`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      domain: domain.trim(),
+      depth,
+      location_code: locationCode,
+      platform: 'google_search',
+    }),
+  })
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))

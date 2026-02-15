@@ -69,6 +69,7 @@ class AdTextContent(BaseModel):
     description: str | None = Field(default=None, description="Ad description (gray text)")
     raw_text: str | None = Field(default=None, description="Raw extracted text from the ad")
     keyphrases: list[str] = Field(default_factory=list, description="Extracted key phrases (1-5 phrases)")
+    detected_language: str | None = Field(default=None, description="Detected language code (ISO 639-1)")
     error: str | None = Field(default=None, description="Error message if extraction failed")
 
 
@@ -138,3 +139,16 @@ class LocationsResponse(BaseModel):
     """Response schema for locations endpoint."""
 
     locations: list[Location] = Field(description="List of available locations/countries")
+
+
+class Language(BaseModel):
+    """Schema for a language."""
+
+    code: str = Field(description="ISO 639-1 language code (e.g., 'en', 'es')")
+    name: str = Field(description="Human-readable language name")
+
+
+class LanguagesResponse(BaseModel):
+    """Response schema for languages endpoint."""
+
+    languages: list[Language] = Field(description="List of supported languages for filtering")

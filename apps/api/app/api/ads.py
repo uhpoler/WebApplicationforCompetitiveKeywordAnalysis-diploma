@@ -11,6 +11,8 @@ from app.schemas.ads import (
     ClusteringData,
     DomainAdsRequest,
     DomainAdsWithTextResponse,
+    Language,
+    LanguagesResponse,
     Location,
     LocationsResponse,
     PhraseInfo,
@@ -23,6 +25,7 @@ from app.services.dataforseo import (
     get_dataforseo_client,
 )
 from app.services.keyword_extractor import KeywordExtractor, get_keyword_extractor
+from app.services.language_detector import LanguageDetector, get_language_detector
 from app.services.phrase_clustering import (
     PhraseClusterer,
     PhraseInfo as ClusterPhraseInfo,
@@ -78,6 +81,31 @@ async def get_locations(
         ) from e
 
 
+@router.get(
+    "/languages",
+    response_model=LanguagesResponse,
+    summary="Get supported languages",
+    description="Retrieve list of supported languages for filtering ads.",
+    responses={
+        200: {"description": "Successfully retrieved languages"},
+    },
+)
+async def get_languages(
+    detector: Annotated[LanguageDetector, Depends(get_language_detector)],
+) -> LanguagesResponse:
+    """
+    Get supported languages for filtering Google Ads.
+
+    Returns a list of languages that can be used to filter ads by detected language.
+    """
+    languages_data = detector.get_supported_languages()
+    languages = [
+        Language(code=lang["code"], name=lang["name"])
+        for lang in languages_data
+    ]
+    return LanguagesResponse(languages=languages)
+
+
 @router.post(
     "/domain/with-text",
     response_model=DomainAdsWithTextResponse,
@@ -94,11 +122,12 @@ async def get_domain_ads_with_text(
     client: Annotated[DataForSEOClient, Depends(get_dataforseo_client)],
     scraper: Annotated[AdTextScraper, Depends(get_ad_scraper)],
     keyword_extractor: Annotated[KeywordExtractor, Depends(get_keyword_extractor)],
+    language_detector: Annotated[LanguageDetector, Depends(get_language_detector)],
     clusterer: Annotated[PhraseClusterer, Depends(get_phrase_clusterer)],
-    max_scrape: Annotated[
-        int,
-        Query(description="Max ads to extract text from (default: 5)", ge=1),
-    ] = 5,
+    language: Annotated[
+        str | None,
+        Query(description="Filter by language code (e.g., 'en', 'es'). If not set, all languages are returned."),
+    ] = None,
 ) -> DomainAdsWithTextResponse:
     """
     Fetch Google Ads with text extracted via OCR from preview images.
@@ -107,13 +136,14 @@ async def get_domain_ads_with_text(
     1. Fetches ad metadata from DataForSEO (including preview image URLs)
     2. Downloads the preview images
     3. Extracts headline and description using color-based OCR
-    4. Extracts keyphrases using YAKE
-    5. Clusters keyphrases using sentence embeddings + HDBSCAN
+    4. Detects language and filters if language parameter is set
+    5. Extracts keyphrases using YAKE
+    6. Clusters keyphrases using sentence embeddings + HDBSCAN
 
     - **domain**: The domain URL to search
     - **location_code**: Geographic location code (default: 2840 for US)
-    - **depth**: Maximum number of results to fetch from DataForSEO
-    - **max_scrape**: Maximum number of ads to extract text from
+    - **depth**: Number of ads to process
+    - **language**: Optional language filter (ISO 639-1 code)
     """
     try:
         # Get ads from DataForSEO
@@ -133,8 +163,8 @@ async def get_domain_ads_with_text(
             if item.get("type") == "ads_search" and item.get("preview_image")
         ]
 
-        # Limit to max_scrape for performance
-        items_to_scrape = ads_items[:max_scrape]
+        # Use depth as the number of ads to process
+        items_to_scrape = ads_items[:request.depth]
 
         # Extract text from preview images using OCR
         scraped_items = await scraper.scrape_multiple_ads(
@@ -161,11 +191,22 @@ async def get_domain_ads_with_text(
             text_content_data = item.get("text_content")
             text_content = None
             keyphrases: list[str] = []
+            detected_lang: str | None = None
 
             if text_content_data and isinstance(text_content_data, dict):
                 headline = text_content_data.get("headline")
                 description = text_content_data.get("description")
                 raw_text = text_content_data.get("raw_text")
+
+                # Combine text for language detection
+                combined_text = " ".join(filter(None, [headline, description, raw_text]))
+
+                # Detect language
+                detected_lang = language_detector.detect_language(combined_text)
+
+                # Skip if language filter is set and doesn't match
+                if language and detected_lang and detected_lang.lower() != language.lower():
+                    continue
 
                 # Extract keyphrases from the ad text
                 keyphrases = keyword_extractor.extract_from_ad_text(
@@ -179,8 +220,12 @@ async def get_domain_ads_with_text(
                     description=description,
                     raw_text=raw_text,
                     keyphrases=keyphrases,
+                    detected_language=detected_lang,
                     error=text_content_data.get("error"),
                 )
+            elif language:
+                # Skip ads without text content if language filter is set
+                continue
 
             # Collect phrase info for clustering
             ad_title = item.get("title")
