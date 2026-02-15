@@ -4,6 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+import asyncio
+
 from app.schemas.ads import (
     AdItemWithText,
     AdTextContent,
@@ -15,6 +17,8 @@ from app.schemas.ads import (
     LanguagesResponse,
     Location,
     LocationsResponse,
+    MultiDomainAdsRequest,
+    MultiDomainAdsResponse,
     PhraseInfo,
     PreviewImage,
 )
@@ -309,6 +313,243 @@ async def get_domain_ads_with_text(
             domain=normalized_domain,
             ads_count=len(ads),
             ads=ads,
+            clustering=clustering_data,
+        )
+
+    except DataForSEOError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"DataForSEO API error: {e.message}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/domains/with-text",
+    response_model=MultiDomainAdsResponse,
+    summary="Get ads from multiple domains with unified clustering",
+    description="Retrieve Google Ads from multiple domains, extract text via OCR, and cluster ALL keyphrases together.",
+    responses={
+        200: {"description": "Successfully retrieved ads with unified clustering"},
+        400: {"description": "Invalid request parameters"},
+        500: {"description": "API or OCR error"},
+    },
+)
+async def get_multi_domain_ads_with_text(
+    request: MultiDomainAdsRequest,
+    client: Annotated[DataForSEOClient, Depends(get_dataforseo_client)],
+    scraper: Annotated[AdTextScraper, Depends(get_ad_scraper)],
+    keyword_extractor: Annotated[KeywordExtractor, Depends(get_keyword_extractor)],
+    language_detector: Annotated[LanguageDetector, Depends(get_language_detector)],
+    clusterer: Annotated[PhraseClusterer, Depends(get_phrase_clusterer)],
+    language: Annotated[
+        str | None,
+        Query(description="Filter by language code (e.g., 'en', 'es'). If not set, all languages are returned."),
+    ] = None,
+) -> MultiDomainAdsResponse:
+    """
+    Fetch Google Ads from multiple domains and cluster ALL keyphrases together.
+
+    This endpoint:
+    1. Fetches ad metadata from DataForSEO for each domain in parallel
+    2. Downloads preview images and extracts text using OCR
+    3. Detects language and filters if language parameter is set
+    4. Extracts keyphrases using YAKE
+    5. Clusters ALL keyphrases from ALL domains together as one unit
+
+    - **domains**: List of domain URLs to search
+    - **location_code**: Geographic location code (default: 2840 for US)
+    - **depth**: Number of ads to process per domain
+    - **language**: Optional language filter (ISO 639-1 code)
+    """
+    try:
+        # Fetch ads from all domains in parallel
+        async def fetch_domain_ads(domain: str) -> tuple[str, list[dict]]:
+            """Fetch ads for a single domain."""
+            try:
+                items = await client.get_domain_ads(
+                    domain=domain,
+                    location_code=request.location_code,
+                    platform=request.platform,
+                    ad_format="text",
+                    depth=request.depth,
+                )
+                normalized = DataForSEOClient._normalize_domain(domain)
+                return normalized, items
+            except Exception:
+                # Return empty list on error for this domain
+                normalized = DataForSEOClient._normalize_domain(domain)
+                return normalized, []
+
+        # Fetch all domains in parallel
+        domain_results = await asyncio.gather(
+            *[fetch_domain_ads(domain) for domain in request.domains]
+        )
+
+        # Process all results
+        all_ads: list[AdItemWithText] = []
+        all_phrase_infos: list[ClusterPhraseInfo] = []
+        processed_domains: list[str] = []
+
+        for normalized_domain, items in domain_results:
+            if not items:
+                continue
+
+            processed_domains.append(normalized_domain)
+
+            # Filter to ads_search type items with preview images
+            ads_items = [
+                item for item in items
+                if item.get("type") == "ads_search" and item.get("preview_image")
+            ]
+
+            # Limit to requested depth per domain
+            items_to_scrape = ads_items[:request.depth]
+
+            # Extract text from preview images using OCR
+            scraped_items = await scraper.scrape_multiple_ads(
+                items_to_scrape,
+                max_concurrent=5,
+            )
+
+            # Process each ad
+            for item in scraped_items:
+                # Parse preview_image
+                preview_image_data = item.get("preview_image")
+                preview_image = None
+                if preview_image_data and isinstance(preview_image_data, dict):
+                    preview_image = PreviewImage(
+                        url=preview_image_data.get("url"),
+                        width=preview_image_data.get("width"),
+                        height=preview_image_data.get("height"),
+                    )
+
+                # Parse text_content and extract keyphrases
+                text_content_data = item.get("text_content")
+                text_content = None
+                keyphrases: list[str] = []
+                detected_lang: str | None = None
+
+                if text_content_data and isinstance(text_content_data, dict):
+                    headline = text_content_data.get("headline")
+                    description = text_content_data.get("description")
+                    sitelinks = text_content_data.get("sitelinks", [])
+                    raw_text = text_content_data.get("raw_text")
+
+                    # Combine text for language detection
+                    combined_text = " ".join(filter(None, [headline, description, raw_text]))
+
+                    # Detect language
+                    detected_lang = language_detector.detect_language(combined_text)
+
+                    # Skip if language filter is set and doesn't match
+                    if language and detected_lang and detected_lang.lower() != language.lower():
+                        continue
+
+                    # Extract keyphrases from the ad text (per-segment)
+                    keyphrases = keyword_extractor.extract_from_ad_text(
+                        headline=headline,
+                        description=description,
+                        raw_text=raw_text,
+                        sitelinks=sitelinks if sitelinks else None,
+                    )
+
+                    text_content = AdTextContent(
+                        headline=headline,
+                        description=description,
+                        sitelinks=sitelinks or [],
+                        raw_text=raw_text,
+                        keyphrases=keyphrases,
+                        detected_language=detected_lang,
+                        error=text_content_data.get("error"),
+                    )
+                elif language:
+                    # Skip ads without text content if language filter is set
+                    continue
+
+                # Collect phrase info for unified clustering
+                ad_title = item.get("title")
+                ad_url = item.get("url")
+                creative_id = item.get("creative_id")
+
+                for phrase in keyphrases:
+                    all_phrase_infos.append(
+                        ClusterPhraseInfo(
+                            phrase=phrase,
+                            ad_title=ad_title,
+                            ad_url=ad_url,
+                            creative_id=creative_id,
+                            domain=normalized_domain,
+                        )
+                    )
+
+                all_ads.append(
+                    AdItemWithText(
+                        type=item.get("type", "ads_search"),
+                        rank_group=item.get("rank_group"),
+                        rank_absolute=item.get("rank_absolute"),
+                        advertiser_id=item.get("advertiser_id"),
+                        creative_id=creative_id,
+                        title=ad_title,
+                        url=ad_url,
+                        verified=item.get("verified"),
+                        format=item.get("format"),
+                        preview_image=preview_image,
+                        first_shown=item.get("first_shown"),
+                        last_shown=item.get("last_shown"),
+                        text_content=text_content,
+                    )
+                )
+
+        # Cluster ALL keyphrases from ALL domains together
+        clustering_result = clusterer.cluster_phrases(all_phrase_infos)
+
+        # Convert to response schema
+        clusters = [
+            Cluster(
+                id=c.id,
+                name=c.name,
+                size=c.size,
+                phrases=[
+                    PhraseInfo(
+                        phrase=p.phrase,
+                        ad_title=p.ad_title,
+                        ad_url=p.ad_url,
+                        creative_id=p.creative_id,
+                        domain=p.domain,
+                    )
+                    for p in c.phrases
+                ],
+            )
+            for c in clustering_result.clusters
+        ]
+
+        unclustered = [
+            PhraseInfo(
+                phrase=p.phrase,
+                ad_title=p.ad_title,
+                ad_url=p.ad_url,
+                creative_id=p.creative_id,
+                domain=p.domain,
+            )
+            for p in clustering_result.unclustered
+        ]
+
+        clustering_data = ClusteringData(
+            clusters=clusters,
+            unclustered=unclustered,
+            total_phrases=clustering_result.total_phrases,
+            error=clustering_result.error,
+        )
+
+        return MultiDomainAdsResponse(
+            domains=processed_domains,
+            ads_count=len(all_ads),
+            ads=all_ads,
             clustering=clustering_data,
         )
 

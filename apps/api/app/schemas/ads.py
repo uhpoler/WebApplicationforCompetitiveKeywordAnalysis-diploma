@@ -154,3 +154,67 @@ class LanguagesResponse(BaseModel):
     """Response schema for languages endpoint."""
 
     languages: list[Language] = Field(description="List of supported languages for filtering")
+
+
+class MultiDomainAdsRequest(BaseModel):
+    """Request schema for fetching ads from multiple domains."""
+
+    domains: list[str] = Field(
+        ...,
+        description="List of domain URLs to search ads for",
+        min_length=1,
+        examples=[["theliven.com", "betterhelp.com"]],
+    )
+    location_code: int = Field(
+        default=2840,
+        description="Location code for the search (default: 2840 for United States)",
+        ge=1,
+    )
+    platform: str = Field(
+        default="google_search",
+        description="Advertising platform to search",
+    )
+    depth: int = Field(
+        default=10,
+        description="Number of results to retrieve per domain (max: 120)",
+        ge=1,
+        le=120,
+    )
+
+    @field_validator("domains")
+    @classmethod
+    def validate_domains(cls, v: list[str]) -> list[str]:
+        """Validate and clean the domain inputs."""
+        cleaned = []
+        for domain in v:
+            domain = domain.strip()
+            if domain:
+                cleaned.append(domain)
+        if not cleaned:
+            raise ValueError("At least one domain is required")
+        return cleaned
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Validate platform value."""
+        allowed_platforms = {
+            "all",
+            "google_play",
+            "google_maps",
+            "google_search",
+            "google_shopping",
+            "youtube",
+        }
+        if v.lower() not in allowed_platforms:
+            raise ValueError(f"Platform must be one of: {', '.join(sorted(allowed_platforms))}")
+        return v.lower()
+
+
+class MultiDomainAdsResponse(BaseModel):
+    """Response schema for multi-domain ads search with unified clustering."""
+
+    domains: list[str] = Field(description="List of normalized domains that were searched")
+    ads_count: int = Field(description="Total number of ads found across all domains")
+    ads: list[AdItemWithText] = Field(description="List of ad items with text content from all domains")
+    clustering: ClusteringData | None = Field(default=None, description="Unified clustering results for all keyphrases")
