@@ -1,9 +1,16 @@
-"""Keyword extraction service using YAKE for extracting key phrases from ad text."""
+"""Keyword extraction service using YAKE for extracting key phrases from ad text.
+
+Key design decisions:
+- Keyphrases are extracted PER-SEGMENT (headline, description, sitelinks)
+  to avoid merging unrelated context across boundaries.
+- Text is split into sentences before extraction to prevent cross-sentence phrases.
+- Ad-specific cleaning removes URLs, ratings, OCR artifacts, and common ad noise.
+"""
 
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # Try to import yake, handle gracefully if not installed
 try:
@@ -19,33 +26,41 @@ if TYPE_CHECKING:
 
 
 class KeywordExtractor:
-    """Extract key phrases from text using YAKE algorithm."""
+    """Extract key phrases from ad text using YAKE algorithm."""
 
-    # Common OCR artifacts and garbage patterns to remove
+    # ---------- Cleaning patterns ----------
+    # URLs: http(s), www, or domain-like strings
     URL_PATTERN = re.compile(
-        r"https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(/[^\s]*)?",
+        r"https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:/[^\s]*)?",
         re.IGNORECASE,
     )
-    # Match standalone numbers, ratings like "4.1 (555)", phone numbers
+    # Ratings like "4.1 (555)", phone numbers, standalone numbers
     NUMBER_PATTERN = re.compile(
         r"\b\d+\.?\d*\s*\([^)]*\)|\b\d{3,}[-.\s]?\d{3,}[-.\s]?\d{4}\b|\b\d+\.?\d*\b"
     )
-    # Match special characters and symbols (keeping basic punctuation)
-    SYMBOL_PATTERN = re.compile(r"[^\w\s.,!?'-]", re.UNICODE)
-    # Match repeated characters (OCR artifacts)
+    # Special characters (keep basic punctuation for sentence splitting)
+    SYMBOL_PATTERN = re.compile(r"[^\w\s.,!?;:'\"-]", re.UNICODE)
+    # Repeated characters (OCR artifacts like "aaaa")
     REPEATED_CHAR_PATTERN = re.compile(r"(.)\1{3,}")
-    # Match single characters surrounded by spaces (OCR noise)
-    SINGLE_CHAR_PATTERN = re.compile(r"\s[a-zA-Z]\s")
-    # Match common OCR garbage patterns
+    # Common OCR garbage words
     OCR_GARBAGE_PATTERN = re.compile(
         r"\b(gor|Saree|oes|bees|sa|ston|bs|eX|il)\b", re.IGNORECASE
     )
+    # Common ad call-to-action phrases that aren't meaningful keyphrases
+    CTA_PATTERN = re.compile(
+        r"\b(try (?:it|them|now)|learn more|sign up|get started|click here|"
+        r"buy now|shop now|order now|free trial|download now|start now|"
+        r"view more|see more|find out|read more)\b",
+        re.IGNORECASE,
+    )
+    # Sentence boundary pattern (split on . ! ? ; or significant punctuation)
+    SENTENCE_SPLIT = re.compile(r"[.!?;]+\s+|\s*[~\-–—]\s+|\n+")
 
     def __init__(
         self,
         language: str = "en",
         max_ngram_size: int = 3,
-        dedup_threshold: float = 0.9,
+        dedup_threshold: float = 0.7,
         num_keywords: int = 5,
     ):
         """
@@ -54,156 +69,242 @@ class KeywordExtractor:
         Args:
             language: Language code for keyword extraction
             max_ngram_size: Maximum number of words in a keyphrase (1-5)
-            dedup_threshold: Deduplication threshold (0-1)
-            num_keywords: Maximum number of keywords to extract (1-5)
+            dedup_threshold: Deduplication threshold (0-1, lower = stricter)
+            num_keywords: Maximum number of keywords to extract per segment
         """
         self.language = language
         self.max_ngram_size = min(max(max_ngram_size, 1), 5)
         self.dedup_threshold = dedup_threshold
         self.num_keywords = min(max(num_keywords, 1), 5)
+        self._extractor: yake.KeywordExtractor | None = None  # type: ignore[name-defined]
 
-        if YAKE_AVAILABLE:
-            self.extractor = yake.KeywordExtractor(  # type: ignore[union-attr]
-                lan=language,
+    def _get_extractor(self) -> Any:
+        """Lazy-load the YAKE extractor."""
+        if self._extractor is None and YAKE_AVAILABLE:
+            self._extractor = yake.KeywordExtractor(  # type: ignore[union-attr]
+                lan=self.language,
                 n=self.max_ngram_size,
-                dedupLim=dedup_threshold,
+                dedupLim=self.dedup_threshold,
                 dedupFunc="seqm",
                 windowsSize=1,
-                top=num_keywords,
+                top=self.num_keywords * 2,  # extract more, filter later
             )
-        else:
-            self.extractor = None
+        return self._extractor
+
+    # ---------- Text cleaning ----------
 
     def clean_text(self, text: str | None) -> str:
         """
         Clean text from URLs, numbers, symbols, and OCR artifacts.
 
-        Args:
-            text: Raw text to clean
-
-        Returns:
-            Cleaned text suitable for keyword extraction
+        Preserves sentence-boundary punctuation so that later splitting works.
         """
         if not text:
             return ""
 
         cleaned = text
 
-        # Remove URLs
+        # Remove URLs first (before other transformations)
         cleaned = self.URL_PATTERN.sub(" ", cleaned)
 
-        # Remove numbers and ratings
+        # Remove ratings and numbers
         cleaned = self.NUMBER_PATTERN.sub(" ", cleaned)
 
         # Remove OCR garbage words
         cleaned = self.OCR_GARBAGE_PATTERN.sub(" ", cleaned)
 
-        # Remove special symbols (keep basic punctuation)
+        # Remove CTA phrases (they pollute keyphrases)
+        cleaned = self.CTA_PATTERN.sub(" ", cleaned)
+
+        # Remove special symbols (keep sentence-boundary punctuation)
         cleaned = self.SYMBOL_PATTERN.sub(" ", cleaned)
 
-        # Remove repeated characters (OCR artifacts like "aaaa")
+        # Remove repeated characters (OCR artifacts)
         cleaned = self.REPEATED_CHAR_PATTERN.sub(r"\1", cleaned)
-
-        # Remove single standalone characters
-        cleaned = self.SINGLE_CHAR_PATTERN.sub(" ", cleaned)
 
         # Normalize whitespace
         cleaned = " ".join(cleaned.split())
 
-        # Remove very short words (likely OCR artifacts)
+        # Remove very short words (likely OCR artifacts), keep "a", "i"
         words = cleaned.split()
         words = [w for w in words if len(w) > 1 or w.lower() in ("a", "i")]
         cleaned = " ".join(words)
 
         return cleaned.strip()
 
-    def extract_keyphrases(self, text: str | None) -> list[str]:
+    # ---------- Per-sentence extraction ----------
+
+    def _split_into_sentences(self, text: str) -> list[str]:
+        """Split text into sentences to avoid cross-boundary phrases."""
+        sentences = self.SENTENCE_SPLIT.split(text)
+        return [s.strip() for s in sentences if s.strip() and len(s.strip()) >= 5]
+
+    def _extract_from_sentence(self, sentence: str) -> list[tuple[str, float]]:
+        """Extract keyphrases from a single sentence using YAKE."""
+        extractor = self._get_extractor()
+        if not extractor:
+            return []
+
+        try:
+            return extractor.extract_keywords(sentence)
+        except Exception:
+            return []
+
+    def extract_keyphrases_from_segment(self, text: str | None) -> list[str]:
         """
-        Extract key phrases from text.
+        Extract keyphrases from a single text segment (headline OR description).
 
-        Args:
-            text: Text to extract keyphrases from
-
-        Returns:
-            List of keyphrases (1-5 phrases, each 1-5 words)
+        Splits the segment into sentences and runs YAKE on each sentence
+        independently, so keyphrases never cross sentence boundaries.
         """
         if not YAKE_AVAILABLE:
             return []
 
-        # Clean the text first
-        cleaned_text = self.clean_text(text)
-
-        if not cleaned_text or len(cleaned_text) < 10:
+        cleaned = self.clean_text(text)
+        if not cleaned or len(cleaned) < 5:
             return []
 
-        try:
-            # Extract keywords using YAKE
-            # YAKE returns tuples of (keyword, score) - lower score = more relevant
-            keywords = self.extractor.extract_keywords(cleaned_text)  # type: ignore[union-attr]
+        # Split into sentences
+        sentences = self._split_into_sentences(cleaned)
+        if not sentences:
+            # If no sentence boundaries, treat whole text as one sentence
+            sentences = [cleaned]
 
-            # Extract just the keyword strings
-            keyphrases = []
-            for keyword, _score in keywords:
-                # Validate keyphrase: 1-5 words
-                word_count = len(keyword.split())
-                if 1 <= word_count <= 5:
-                    # Clean up the keyphrase
-                    keyphrase = keyword.strip().lower()
-                    # Skip if too short or contains garbage
-                    if len(keyphrase) >= 3 and not self._is_garbage(keyphrase):
-                        keyphrases.append(keyphrase)
+        # Collect candidates from all sentences with their scores
+        all_candidates: list[tuple[str, float]] = []
+        for sentence in sentences:
+            if len(sentence.split()) < 2:
+                continue
+            candidates = self._extract_from_sentence(sentence)
+            all_candidates.extend(candidates)
 
-            # Return up to num_keywords unique keyphrases
-            return keyphrases[: self.num_keywords]
+        # Deduplicate, validate, and rank
+        seen: set[str] = set()
+        keyphrases: list[str] = []
 
-        except Exception:
-            return []
+        # Sort by score (lower = better in YAKE)
+        all_candidates.sort(key=lambda x: x[1])
 
-    def _is_garbage(self, phrase: str) -> bool:
-        """Check if a phrase is likely OCR garbage."""
-        # Check for too many consonants in a row (likely OCR error)
-        consonant_pattern = re.compile(r"[bcdfghjklmnpqrstvwxz]{4,}", re.IGNORECASE)
-        if consonant_pattern.search(phrase):
-            return True
+        for keyword, _score in all_candidates:
+            keyphrase = keyword.strip().lower()
 
-        # Check if mostly non-alphabetic
-        alpha_count = sum(1 for c in phrase if c.isalpha())
-        if alpha_count < len(phrase) * 0.7:
-            return True
+            # Validate word count (1-5 words)
+            word_count = len(keyphrase.split())
+            if not (1 <= word_count <= 5):
+                continue
 
-        return False
+            # Skip if too short or is garbage
+            if len(keyphrase) < 3 or self._is_garbage(keyphrase):
+                continue
+
+            # Skip near-duplicates: if any existing phrase fully contains this one
+            # or this one fully contains an existing phrase
+            is_duplicate = False
+            for existing in seen:
+                if existing in keyphrase or keyphrase in existing:
+                    is_duplicate = True
+                    break
+            if is_duplicate:
+                continue
+
+            seen.add(keyphrase)
+            keyphrases.append(keyphrase)
+
+        return keyphrases
+
+    # ---------- Main extraction method ----------
 
     def extract_from_ad_text(
         self,
         headline: str | None,
         description: str | None,
         raw_text: str | None = None,
+        sitelinks: list[str] | None = None,
     ) -> list[str]:
         """
         Extract keyphrases from ad text components.
 
-        Combines headline, description, and raw_text for better extraction.
+        Each component is processed independently to prevent phrases that
+        merge words from unrelated sections (e.g. headline + description).
 
         Args:
             headline: Ad headline text
             description: Ad description text
-            raw_text: Raw extracted text (fallback)
+            raw_text: Raw extracted text (fallback only if headline & desc missing)
+            sitelinks: List of sitelink texts
 
         Returns:
-            List of keyphrases
+            List of unique keyphrases (1-5 total)
         """
-        # Combine available text
-        text_parts = []
+        all_keyphrases: list[str] = []
+        seen: set[str] = set()
+
+        def _add_unique(phrases: list[str]) -> None:
+            for p in phrases:
+                lower_p = p.lower()
+                # Check for containment duplicates across segments too
+                is_dup = False
+                for existing in seen:
+                    if existing in lower_p or lower_p in existing:
+                        is_dup = True
+                        break
+                if not is_dup:
+                    seen.add(lower_p)
+                    all_keyphrases.append(p)
+
+        # 1. Extract from headline (highest priority)
         if headline:
-            text_parts.append(headline)
+            headline_phrases = self.extract_keyphrases_from_segment(headline)
+            _add_unique(headline_phrases)
+
+        # 2. Extract from description
         if description:
-            text_parts.append(description)
-        if raw_text and not (headline or description):
-            text_parts.append(raw_text)
+            desc_phrases = self.extract_keyphrases_from_segment(description)
+            _add_unique(desc_phrases)
 
-        combined_text = " ".join(text_parts)
+        # 3. Extract from sitelinks (often contain good keywords)
+        if sitelinks:
+            for sitelink in sitelinks:
+                if sitelink and len(sitelink) >= 3:
+                    # Sitelinks are already short phrases - use them directly
+                    cleaned = self.clean_text(sitelink)
+                    if cleaned and len(cleaned) >= 3 and not self._is_garbage(cleaned):
+                        lower_cleaned = cleaned.lower()
+                        is_dup = False
+                        for existing in seen:
+                            if existing in lower_cleaned or lower_cleaned in existing:
+                                is_dup = True
+                                break
+                        if not is_dup:
+                            seen.add(lower_cleaned)
+                            all_keyphrases.append(lower_cleaned)
 
-        return self.extract_keyphrases(combined_text)
+        # 4. Fallback to raw_text only if nothing else worked
+        if not all_keyphrases and raw_text:
+            raw_phrases = self.extract_keyphrases_from_segment(raw_text)
+            _add_unique(raw_phrases)
+
+        # Return top 5
+        return all_keyphrases[: self.num_keywords]
+
+    # ---------- Validation helpers ----------
+
+    def _is_garbage(self, phrase: str) -> bool:
+        """Check if a phrase is likely OCR garbage."""
+        # Too many consonants in a row (likely OCR error)
+        if re.search(r"[bcdfghjklmnpqrstvwxz]{4,}", phrase, re.IGNORECASE):
+            return True
+
+        # Mostly non-alphabetic characters
+        alpha_count = sum(1 for c in phrase if c.isalpha())
+        if len(phrase) > 0 and alpha_count < len(phrase) * 0.6:
+            return True
+
+        # Single word that is very short
+        if len(phrase.split()) == 1 and len(phrase) < 3:
+            return True
+
+        return False
 
 
 # Singleton instance for dependency injection

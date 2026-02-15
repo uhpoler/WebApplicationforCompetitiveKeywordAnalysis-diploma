@@ -32,6 +32,7 @@ export interface PreviewImage {
 export interface AdTextContent {
   headline: string | null
   description: string | null
+  sitelinks: string[]
   raw_text: string | null
   keyphrases: string[]
   detected_language: string | null

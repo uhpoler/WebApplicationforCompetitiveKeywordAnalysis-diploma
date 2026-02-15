@@ -67,6 +67,7 @@ class AdTextContent(BaseModel):
 
     headline: str | None = Field(default=None, description="Ad headline (blue text)")
     description: str | None = Field(default=None, description="Ad description (gray text)")
+    sitelinks: list[str] = Field(default_factory=list, description="Ad sitelinks (blue text at bottom)")
     raw_text: str | None = Field(default=None, description="Raw extracted text from the ad")
     keyphrases: list[str] = Field(default_factory=list, description="Extracted key phrases (1-5 phrases)")
     detected_language: str | None = Field(default=None, description="Detected language code (ISO 639-1)")

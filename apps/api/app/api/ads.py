@@ -196,6 +196,7 @@ async def get_domain_ads_with_text(
             if text_content_data and isinstance(text_content_data, dict):
                 headline = text_content_data.get("headline")
                 description = text_content_data.get("description")
+                sitelinks = text_content_data.get("sitelinks", [])
                 raw_text = text_content_data.get("raw_text")
 
                 # Combine text for language detection
@@ -208,16 +209,18 @@ async def get_domain_ads_with_text(
                 if language and detected_lang and detected_lang.lower() != language.lower():
                     continue
 
-                # Extract keyphrases from the ad text
+                # Extract keyphrases from the ad text (per-segment)
                 keyphrases = keyword_extractor.extract_from_ad_text(
                     headline=headline,
                     description=description,
                     raw_text=raw_text,
+                    sitelinks=sitelinks if sitelinks else None,
                 )
 
                 text_content = AdTextContent(
                     headline=headline,
                     description=description,
+                    sitelinks=sitelinks or [],
                     raw_text=raw_text,
                     keyphrases=keyphrases,
                     detected_language=detected_lang,

@@ -95,6 +95,30 @@
   margin-bottom: 0.75rem;
 }
 
+.text-sitelinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sitelink-item {
+  color: #1a0dab;
+  font-size: 0.825rem;
+  cursor: pointer;
+}
+
+.sitelink-item:hover {
+  text-decoration: underline;
+}
+
+.sitelink-item:not(:last-child)::after {
+  content: ' · ';
+  color: #70757a;
+  cursor: default;
+  text-decoration: none;
+}
+
 /* Keyphrases styling */
 .keyphrases-container {
   margin-top: 0.75rem;

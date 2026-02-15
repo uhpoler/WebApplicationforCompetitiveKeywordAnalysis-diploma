@@ -28,6 +28,7 @@ export function AdTextDisplay({ textContent }: AdTextDisplayProps) {
   const hasRawText = textContent.raw_text
   const hasNoContent = !hasStructuredContent && !hasRawText
   const hasKeyphrases = textContent.keyphrases && textContent.keyphrases.length > 0
+  const hasSitelinks = textContent.sitelinks && textContent.sitelinks.length > 0
 
   return (
     <div className="ad-text-content">
@@ -37,6 +38,16 @@ export function AdTextDisplay({ textContent }: AdTextDisplayProps) {
 
       {textContent.description && (
         <div className="text-description">{textContent.description}</div>
+      )}
+
+      {hasSitelinks && (
+        <div className="text-sitelinks">
+          {textContent.sitelinks.map((link, index) => (
+            <span key={index} className="sitelink-item">
+              {link}
+            </span>
+          ))}
+        </div>
       )}
 
       {!hasStructuredContent && hasRawText && (

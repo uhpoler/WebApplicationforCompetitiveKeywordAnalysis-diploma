@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -30,12 +30,38 @@ except ImportError:
     np = None
 
 
+# Regex to detect URLs in OCR text
+URL_PATTERN = re.compile(
+    r"https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:/[^\s]*)?",
+    re.IGNORECASE,
+)
+
+# Pattern to detect "Sponsored" / "Sponsorisé" / "Ad" labels
+SPONSORED_PATTERN = re.compile(
+    r"\b(Sponsored|Sponsoris[eé]|Ad|Anzeige|Annonce|Patrocinado)\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class TextBlock:
+    """A block of text extracted from OCR with spatial info."""
+
+    text: str
+    x: int
+    y: int
+    width: int
+    height: int
+    confidence: float
+
+
 @dataclass
 class AdTextContent:
     """Extracted ad text content."""
 
     headline: str | None = None
     description: str | None = None
+    sitelinks: list[str] = field(default_factory=list)
     raw_text: str | None = None
     error: str | None = None
 
@@ -44,9 +70,10 @@ class AdTextScraper:
     """
     Extracts ad text from preview images using OCR (Tesseract).
 
-    Uses color-based segmentation to extract:
-    - Blue text = Headlines/Links
-    - Gray text = Description
+    Uses color-based segmentation combined with spatial analysis to extract:
+    - Blue text at top = Headline
+    - Blue text at bottom (after gap) = Sitelinks (separated by · or similar)
+    - Gray text (excluding URLs) = Description
     """
 
     def __init__(self) -> None:
@@ -96,7 +123,7 @@ class AdTextScraper:
             timeout: HTTP request timeout in seconds.
 
         Returns:
-            AdTextContent with extracted headline and description.
+            AdTextContent with extracted headline, description, and sitelinks.
         """
         content = AdTextContent()
 
@@ -122,14 +149,18 @@ class AdTextScraper:
             if image.mode in ("RGBA", "P"):
                 image = image.convert("RGB")
 
-            # Extract text using color-based segmentation
-            headline, description = self._extract_text_by_color(image)
+            # Extract structured text using spatial + color analysis
+            self._extract_structured_text(image, content)
 
-            content.headline = headline
-            content.description = description
-            content.raw_text = (
-                f"{headline or ''}\n{description or ''}".strip() or None
-            )
+            # Build raw_text from structured parts
+            parts = []
+            if content.headline:
+                parts.append(content.headline)
+            if content.description:
+                parts.append(content.description)
+            if content.sitelinks:
+                parts.append(" · ".join(content.sitelinks))
+            content.raw_text = "\n".join(parts).strip() or None
 
             return content
 
@@ -140,49 +171,177 @@ class AdTextScraper:
             content.error = f"OCR extraction failed: {str(e)}"
             return content
 
-    def _extract_text_by_color(
-        self, image: Any
-    ) -> tuple[str | None, str | None]:
+    def _extract_structured_text(self, image: Any, content: AdTextContent) -> None:
         """
-        Extract headline and description based on text color.
+        Extract headline, description, and sitelinks using spatial OCR on
+        color-segmented images.
 
-        Google Ads use specific colors:
-        - Blue text (~RGB 26, 13, 171) = Headline/Links
-        - Gray text (~RGB 95, 99, 104) = Description
-
-        Returns:
-            Tuple of (headline, description)
+        Uses pytesseract.image_to_data() to get bounding boxes, then groups
+        text lines by their vertical position to separate headline from sitelinks.
         """
         img_array = np.array(image)  # type: ignore[union-attr]
 
-        # Create masks for blue and gray text
+        # Create color masks
         blue_mask = self._create_blue_mask(img_array)
         gray_mask = self._create_gray_mask(img_array)
 
-        # Create images with only the colored text visible (white background)
+        # Create masked images
         blue_image = self._apply_mask(image, blue_mask)
         gray_image = self._apply_mask(image, gray_mask)
 
-        # OCR each masked image
+        # --- Process blue text (headline + sitelinks) with spatial data ---
+        blue_lines = self._get_text_lines(blue_image)
+        if blue_lines:
+            headline_lines, sitelink_lines = self._split_headline_sitelinks(blue_lines)
+
+            headline_text = " ".join(headline_lines).strip()
+            headline_text = self._clean_line(headline_text)
+            if headline_text and len(headline_text) >= 10:
+                content.headline = headline_text
+
+            # Parse sitelinks (usually separated by · or on separate lines)
+            if sitelink_lines:
+                raw_sitelinks = " ".join(sitelink_lines).strip()
+                content.sitelinks = self._parse_sitelinks(raw_sitelinks)
+
+        # --- Process gray text (description) with URL filtering ---
+        gray_lines = self._get_text_lines(gray_image)
+        if gray_lines:
+            # Filter out URL lines and sponsored labels
+            desc_lines = []
+            for line_text in gray_lines:
+                cleaned = line_text.strip()
+                if not cleaned:
+                    continue
+                # Skip lines that are primarily URLs
+                without_urls = URL_PATTERN.sub("", cleaned).strip()
+                if len(without_urls) < 5:
+                    continue
+                # Skip sponsored labels
+                if SPONSORED_PATTERN.fullmatch(cleaned.strip()):
+                    continue
+                # Remove any remaining inline URLs
+                without_urls = URL_PATTERN.sub("", cleaned).strip()
+                desc_lines.append(without_urls)
+
+            description = " ".join(desc_lines).strip()
+            description = self._clean_line(description)
+            if description and len(description) >= 10:
+                content.description = description
+
+    def _get_text_lines(self, masked_image: Any) -> list[str]:
+        """
+        Run OCR on a masked image and return text grouped by line.
+
+        Uses image_to_data to get bounding boxes and groups words by
+        their line number.
+        """
         custom_config = r"--oem 3 --psm 6"
-
-        headline_raw = pytesseract.image_to_string(  # type: ignore[union-attr]
-            blue_image, config=custom_config
+        data = pytesseract.image_to_data(  # type: ignore[union-attr]
+            masked_image, config=custom_config, output_type=pytesseract.Output.DICT  # type: ignore[union-attr]
         )
-        headline = self._clean_ocr_text(headline_raw)
 
-        description_raw = pytesseract.image_to_string(  # type: ignore[union-attr]
-            gray_image, config=custom_config
-        )
-        description = self._clean_ocr_text(description_raw)
+        # Group words by (block_num, par_num, line_num) to preserve line structure
+        line_groups: dict[tuple[int, int, int], list[tuple[int, str]]] = {}
 
-        # Filter out noise - text should be substantial
-        if headline and len(headline) < 10:
-            headline = None
-        if description and len(description) < 10:
-            description = None
+        for i in range(len(data["text"])):
+            text = data["text"][i].strip()
+            conf = int(data["conf"][i])
+            if not text or conf < 30:
+                continue
 
-        return headline, description
+            key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+            x = data["left"][i]
+            if key not in line_groups:
+                line_groups[key] = []
+            line_groups[key].append((x, text))
+
+        # Sort words within each line by x-coordinate, then sort lines by key
+        lines: list[str] = []
+        for key in sorted(line_groups.keys()):
+            words = line_groups[key]
+            words.sort(key=lambda w: w[0])
+            line_text = " ".join(w[1] for w in words)
+            if line_text.strip():
+                lines.append(line_text.strip())
+
+        return lines
+
+    def _split_headline_sitelinks(
+        self, blue_lines: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """
+        Split blue text lines into headline lines and sitelink lines.
+
+        Sitelinks are identified by:
+        - Lines containing · (middle dot separator)
+        - Short lines after a gap from the main headline text
+        """
+        if not blue_lines:
+            return [], []
+
+        if len(blue_lines) == 1:
+            # Check if the single line contains sitelink separators
+            line = blue_lines[0]
+            if "·" in line or " - " not in line and "·" in line:
+                # Try splitting: part before · might be headline
+                parts = [p.strip() for p in line.split("·")]
+                if len(parts) >= 2 and len(parts[0]) > 15:
+                    return [parts[0]], parts[1:]
+            return blue_lines, []
+
+        # For multiple lines, look for sitelink indicators
+        headline_lines: list[str] = []
+        sitelink_lines: list[str] = []
+        found_sitelinks = False
+
+        for line in blue_lines:
+            # Sitelink indicators: contains ·, or is a very short line after headline
+            has_separator = "·" in line
+            is_short_after_headline = (
+                len(headline_lines) >= 1
+                and len(line) < 30
+                and not found_sitelinks
+            )
+
+            if has_separator:
+                found_sitelinks = True
+                sitelink_lines.append(line)
+            elif found_sitelinks:
+                sitelink_lines.append(line)
+            elif is_short_after_headline and self._looks_like_sitelink(line):
+                found_sitelinks = True
+                sitelink_lines.append(line)
+            else:
+                headline_lines.append(line)
+
+        return headline_lines, sitelink_lines
+
+    def _looks_like_sitelink(self, text: str) -> bool:
+        """Check if text looks like a sitelink (short, capitalized phrase)."""
+        words = text.split()
+        # Sitelinks are typically 1-4 words, capitalized
+        if 1 <= len(words) <= 5 and len(text) < 40:
+            return True
+        return False
+
+    def _parse_sitelinks(self, text: str) -> list[str]:
+        """Parse sitelink text into individual links."""
+        if not text:
+            return []
+
+        # Split by common separators
+        parts = re.split(r"\s*[·•|]\s*", text)
+        sitelinks = []
+        for part in parts:
+            cleaned = part.strip()
+            if cleaned and len(cleaned) >= 3:
+                # Remove any trailing/leading punctuation
+                cleaned = cleaned.strip(".,;:-")
+                if cleaned:
+                    sitelinks.append(cleaned)
+
+        return sitelinks
 
     def _create_blue_mask(self, img_array: Any) -> Any:
         """
@@ -205,6 +364,7 @@ class AdTextScraper:
         Create a mask for gray text (description text).
 
         Gray text has similar R, G, B values in the mid-range.
+        Excludes green-ish text (URLs in Google Ads are slightly green-tinted).
         """
         r, g, b = img_array[:, :, 0], img_array[:, :, 1], img_array[:, :, 2]
 
@@ -236,20 +396,18 @@ class AdTextScraper:
 
         return Image.fromarray(result.astype(np.uint8))  # type: ignore[union-attr]
 
-    def _clean_ocr_text(self, text: str) -> str | None:
-        """Clean up OCR-extracted text."""
+    def _clean_line(self, text: str) -> str | None:
+        """Clean up a line of OCR-extracted text."""
         if not text:
             return None
 
-        # Remove excessive whitespace and OCR artifacts
+        # Remove excessive whitespace
         text = re.sub(r"\s+", " ", text)
-        text = re.sub(r"[|\\]", "", text)
+        # Remove common OCR artifacts
+        text = re.sub(r"[|\\{}\[\]]", "", text)
+        text = text.strip()
 
-        # Join lines into single text
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-        result = " ".join(lines).strip()
-
-        return result if result else None
+        return text if text else None
 
     async def extract_text_from_ad_item(self, ad_item: dict[str, Any]) -> dict[str, Any]:
         """
@@ -281,6 +439,7 @@ class AdTextScraper:
         ad_item["text_content"] = {
             "headline": text_content.headline,
             "description": text_content.description,
+            "sitelinks": text_content.sitelinks,
             "raw_text": text_content.raw_text,
             "error": text_content.error,
         }
