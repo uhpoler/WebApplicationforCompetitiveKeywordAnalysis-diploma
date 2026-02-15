@@ -10,14 +10,12 @@ alwaysApply: true
 ├── apps/
 │   ├── api/          # FastAPI backend (Python)
 │   └── web/          # React + Vite frontend
-└── infra/            # Infrastructure configs
 ```
 
 ### Key files
 
 - [apps/api/](mdc:apps/api): FastAPI backend
 - [apps/web/](mdc:apps/web): React frontend
-- [infra/](mdc:infra): Infrastructure configs
 - [.vscode/settings.json](mdc:.vscode/settings.json): VS Code/Cursor Python interpreter settings
 - [pyrightconfig.json](mdc:pyrightconfig.json): Pylance language server config
 
@@ -82,19 +80,26 @@ npm run dev
 - Python 3.12+
 - [FastAPI](https://fastapi.tiangolo.com/) - REST API framework
 - [Pydantic](https://docs.pydantic.dev/) - Data validation & settings
-- [SQLAlchemy](https://www.sqlalchemy.org/) - ORM
-- [Alembic](https://alembic.sqlalchemy.org/) - Database migrations
+- [httpx](https://www.python-httpx.org/) - Async HTTP client
+- [pytesseract](https://github.com/madmaze/pytesseract) - OCR text extraction
+- [YAKE](https://github.com/LIAAD/yake) - Keyphrase extraction
+- [sentence-transformers](https://www.sbert.net/) - Text embeddings
+- [scikit-learn](https://scikit-learn.org/) - Clustering (AgglomerativeClustering)
+- [langdetect](https://github.com/Mimino666/langdetect) - Language detection
 - [Uvicorn](https://www.uvicorn.org/) - ASGI server
-- [psycopg](https://www.psycopg.org/) - PostgreSQL driver
 
 ## Project structure
 
 - [apps/api/app/main.py](mdc:apps/api/app/main.py): Application entrypoint
-- [apps/api/app/api/](mdc:apps/api/app/api): API routes
+- [apps/api/app/api/](mdc:apps/api/app/api): API routes (ads.py, health.py)
 - [apps/api/app/core/](mdc:apps/api/app/core): Config and settings
-- [apps/api/app/db/](mdc:apps/api/app/db): Database session
 - [apps/api/app/schemas/](mdc:apps/api/app/schemas): Pydantic schemas
 - [apps/api/app/services/](mdc:apps/api/app/services): Business logic
+  - `dataforseo.py` - DataForSEO API client
+  - `ad_scraper.py` - OCR text extraction from ad images
+  - `keyword_extractor.py` - YAKE keyphrase extraction
+  - `phrase_clustering.py` - Sentence embeddings + clustering
+  - `language_detector.py` - Language detection
 
 ## Virtual environment
 
@@ -107,6 +112,7 @@ npm run dev
 - Settings loaded via [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - Config file: [apps/api/app/core/config.py](mdc:apps/api/app/core/config.py)
 - Environment variables can be set in `apps/api/.env`
+- Required env vars: `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`
 
 ---
 
@@ -123,6 +129,10 @@ npm run dev
 - [apps/web/src/](mdc:apps/web/src): Source code
 - [apps/web/src/App.tsx](mdc:apps/web/src/App.tsx): Main App component
 - [apps/web/src/main.tsx](mdc:apps/web/src/main.tsx): Entry point
+- [apps/web/src/components/](mdc:apps/web/src/components): UI components
+- [apps/web/src/hooks/](mdc:apps/web/src/hooks): Custom React hooks
+- [apps/web/src/services/](mdc:apps/web/src/services): API client
+- [apps/web/src/types/](mdc:apps/web/src/types): TypeScript interfaces
 
 ## Code standards
 
